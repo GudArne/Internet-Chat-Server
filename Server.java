@@ -1,76 +1,184 @@
 import java.net.*;
+import java.util.ArrayList;
 import java.io.*;
-import java.awt.*;
 
-
-public class Server extends Thread {
+public class Server {
     private int userId = 0;
+    private ServerSocket serverSocket;
 
-    public void run() {
-        try {
-            int serverPort = 2000;
-            ServerSocket serverSocket = new ServerSocket(serverPort);
-            // serverSocket.setSoTimeout(10000); 
-            while(true)
+    public Server(ServerSocket serverSocket) 
+    {
+        this.serverSocket = serverSocket;
+    }
+
+    public void run() 
+    {
+        try 
+        {            
+            while(!serverSocket.isClosed())
             {
                 System.out.println("Waiting for client on port " + serverSocket.getLocalPort() + "..."); 
     
                 // Accept connection from client
                 Socket server = serverSocket.accept();
-                System.out.println("Just connected to " + server.getRemoteSocketAddress());
+                System.out.println("User " +userId+ " just connected to " + server.getRemoteSocketAddress());
 
                 // Create a new thread for the client
                 ClientHandler client = new ClientHandler(server, userId);
-                
-                synchronized(this) {
-                    userId++;
-                }
-                client.start();
-                client.run();
+                userId++;
+
+                // Start the thread for the client
+                Thread t = new Thread(client);
+                t.start();
             }
         }
         catch(UnknownHostException ex) 
         {
             ex.printStackTrace();
+        } catch (IOException e) {
+            // Something went wrong with the connection -> close the server
+            closeServerSocket();
         }
-        catch(IOException e)
+
+    }
+
+    // Close the server socket
+    private void closeServerSocket()
+    {
+        try 
         {
+            if(serverSocket != null)
+            {
+                serverSocket.close();
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
-      }
+    }
 
-      static class ClientHandler extends Thread {
-        private volatile Socket clientSocket;
-        private volatile PrintWriter out;
-        private volatile BufferedReader in;
-        private volatile int userId;
+    static class ClientHandler implements Runnable 
+    {
+        public static ArrayList<ClientHandler> clients = new ArrayList<ClientHandler>();
+        volatile Socket clientSocket;
+        private BufferedWriter out;
+        private BufferedReader in;
+        private int userId;
 
-        public ClientHandler(Socket socket, int userId) {
-            this.clientSocket = socket;
+        public ClientHandler(Socket socket, int userId) 
+        {
+            try 
+            {
+                this.clientSocket = socket;
+                this.out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+                this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                this.userId = userId;
+                clients.add(this);
+
+                notifyClients("User " + userId + " has joined the chat");
+
+            } 
+            catch (Exception e) 
+            {
+                // Something went wrong with the connection -> close the clienet
+                closeClient(socket, out, in);
+            }
             this.userId = userId;
         }
 
-        public void run() {
-            try {
-                out = new PrintWriter(clientSocket.getOutputStream(), true);
-                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                String inputLine;
-                while ((inputLine = in.readLine()) != null) 
+        private void closeClient(Socket socket, BufferedWriter writer, BufferedReader reader) 
+        {
+            notifyClients("User " + userId + " has left the chat");
+
+            System.out.println("We are in closeClient and the user id is " + userId);
+            
+            try 
+            {
+                if(clients.contains(this))
                 {
-                    System.out.println("User "+userId+" sent: " + inputLine);
-                    break;
+                    clients.remove(this);
                 }
-            } catch (IOException e) 
+                if (socket != null) 
+                {
+                    socket.close();
+                }
+                if (writer != null) 
+                {
+                    writer.close();
+                }
+                if (reader != null) 
+                {
+                    reader.close();
+                }
+            } 
+            catch (Exception e) 
             {
                 e.printStackTrace();
             }
         }
+
+        // Broadcast message to all clients except the sender
+        private void notifyClients(String message) 
+        {
+            System.out.println(message);
+
+            for (ClientHandler client : clients) 
+            {
+                if(client != null)
+                {
+                    try 
+                    {
+                        if(client.userId != userId)
+                        {
+                            client.out.write(message);
+                            client.out.newLine();
+                            client.out.flush();
+                        }
+                    } 
+                    catch (Exception e) 
+                    {
+                        closeClient(clientSocket, out, in);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void run() 
+        {
+            String message;
+            while(clientSocket.isConnected())
+            {
+                try 
+                {
+                    message = in.readLine();
+
+                    if(message.equals("exit"))
+                    {
+                        closeClient(clientSocket, out, in);
+                        break;
+                    }
+
+                    // Never send empty messages
+                    if(message != null)
+                    {
+                        notifyClients("User " + userId + " sent: " + message);
+                    }
+                } 
+                catch (IOException e) 
+                {
+                    // Something went wrong with the connection -> close the client
+                    closeClient(clientSocket, out, in);
+                    break;
+                }
+            }
+        }
     }
 
-    public static void main(String[] args) throws IOException {
-        Server srv = new Server();
+    public static void main(String[] args) throws IOException 
+    {
+        Server server = new Server(new ServerSocket(2000));
 
-		srv.run();
+		server.run();
     }
 }
 
