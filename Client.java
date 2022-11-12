@@ -3,7 +3,7 @@ import java.io.*;
 
 public class Client{
 
-    volatile Socket socket;
+    private Socket socket;
     private BufferedReader in;
     private BufferedWriter out;
 

@@ -39,7 +39,6 @@ public class Server {
             // Something went wrong with the connection -> close the server
             closeServerSocket();
         }
-
     }
 
     // Close the server socket
@@ -59,7 +58,7 @@ public class Server {
     static class ClientHandler implements Runnable 
     {
         public static ArrayList<ClientHandler> clients = new ArrayList<ClientHandler>();
-        volatile Socket clientSocket;
+        private Socket clientSocket;
         private BufferedWriter out;
         private BufferedReader in;
         private int userId;
@@ -89,8 +88,6 @@ public class Server {
         {
             notifyClients("User " + userId + " has left the chat");
 
-            System.out.println("We are in closeClient and the user id is " + userId);
-            
             try 
             {
                 if(clients.contains(this))
